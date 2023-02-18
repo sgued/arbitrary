@@ -21,6 +21,8 @@ pub fn recursion_guard(
     }
 }
 
+type SizeHintFunc = fn(usize) -> (usize, Option<usize>);
+
 /// Take the sum of the `lhs` and `rhs` size hints.
 #[inline]
 pub fn and(lhs: (usize, Option<usize>), rhs: (usize, Option<usize>)) -> (usize, Option<usize>) {
@@ -38,6 +40,26 @@ pub fn and(lhs: (usize, Option<usize>), rhs: (usize, Option<usize>)) -> (usize, 
 #[inline]
 pub fn and_all(hints: &[(usize, Option<usize>)]) -> (usize, Option<usize>) {
     hints.iter().copied().fold((0, Some(0)), and)
+}
+
+/// Take the sum of all of the given size hints.
+///
+/// Unlike, [`and_all`][], the hints are passed as function that are evaluated lazily.
+/// This allows this implementation to return early if it reaches the maximum size of `(usize::MAX, None)`.
+/// If `hints` is empty, returns `(0, Some(0))`, aka the size of consuming
+/// nothing.
+#[inline]
+pub fn and_all_lazy(hints: &[SizeHintFunc], depth: usize) -> (usize, Option<usize>) {
+    let mut acc = (0, Some(0));
+    for hint in hints {
+        acc = and(acc, hint(depth));
+        if matches!(acc, (usize::MAX, None)) {
+            // We reached a fix point of the `and` function
+            // The accumulator will not change anymore
+            break;
+        }
+    }
+    acc
 }
 
 /// Take the minimum of the lower bounds and maximum of the upper bounds in the
@@ -59,6 +81,28 @@ pub fn or(lhs: (usize, Option<usize>), rhs: (usize, Option<usize>)) -> (usize, O
 pub fn or_all(hints: &[(usize, Option<usize>)]) -> (usize, Option<usize>) {
     if let Some(head) = hints.first().copied() {
         hints[1..].iter().copied().fold(head, or)
+    } else {
+        (0, Some(0))
+    }
+}
+
+/// Take the maximum of the `lhs` and `rhs` size hints.
+///
+/// Unlike, [`or_all`][], the hints are passed as function that are evaluated lazily.
+/// This allows this implementation to return early if it reaches the maximum size of `(0, None)`.
+/// If `hints` is empty, returns `(0, Some(0))`, aka the size of consuming
+/// nothing.
+#[inline]
+pub fn or_all_lazy(hints: &[SizeHintFunc], depth: usize) -> (usize, Option<usize>) {
+    if let Some(head) = hints.first().copied() {
+        let mut acc = head(depth);
+        for hint in &hints[1..] {
+            acc = or(acc, hint(depth));
+            if matches!(acc, (0, None)) {
+                break;
+            }
+        }
+        acc
     } else {
         (0, Some(0))
     }
@@ -102,6 +146,26 @@ mod tests {
             super::and_all(&[(1, None), (2, Some(2)), (4, Some(4))])
         );
     }
+    #[test]
+    fn and_all_lazy() {
+        assert_eq!((0, Some(0)), super::and_all_lazy(&[], 0));
+        assert_eq!(
+            (7, Some(7)),
+            super::and_all_lazy(&[|_| (1, Some(1)), |_| (2, Some(2)), |_| (4, Some(4))], 0)
+        );
+        assert_eq!(
+            (7, None),
+            super::and_all_lazy(&[|_| (1, Some(1)), |_| (2, Some(2)), |_| (4, None)], 0)
+        );
+        assert_eq!(
+            (7, None),
+            super::and_all_lazy(&[|_| (1, Some(1)), |_| (2, None), |_| (4, Some(4))], 0)
+        );
+        assert_eq!(
+            (7, None),
+            super::and_all_lazy(&[|_| (1, None), |_| (2, Some(2)), |_| (4, Some(4))], 0)
+        );
+    }
 
     #[test]
     fn or_all() {
@@ -121,6 +185,27 @@ mod tests {
         assert_eq!(
             (1, None),
             super::or_all(&[(1, None), (2, Some(2)), (4, Some(4))])
+        );
+    }
+
+    #[test]
+    fn or_all_lazy() {
+        assert_eq!((0, Some(0)), super::or_all_lazy(&[], 0));
+        assert_eq!(
+            (1, Some(4)),
+            super::or_all_lazy(&[|_| (1, Some(1)), |_| (2, Some(2)), |_| (4, Some(4))], 0)
+        );
+        assert_eq!(
+            (1, None),
+            super::or_all_lazy(&[|_| (1, Some(1)), |_| (2, Some(2)), |_| (4, None)], 0)
+        );
+        assert_eq!(
+            (1, None),
+            super::or_all_lazy(&[|_| (1, Some(1)), |_| (2, None), |_| (4, Some(4))], 0)
+        );
+        assert_eq!(
+            (1, None),
+            super::or_all_lazy(&[|_| (1, None), |_| (2, Some(2)), |_| (4, Some(4))], 0)
         );
     }
 }
