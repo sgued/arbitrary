@@ -15,7 +15,7 @@ pub fn recursion_guard(
 ) -> (usize, Option<usize>) {
     const MAX_DEPTH: usize = 20;
     if depth > MAX_DEPTH {
-        (0, None)
+        (usize::MAX, None)
     } else {
         f(depth + 1)
     }
@@ -24,8 +24,10 @@ pub fn recursion_guard(
 /// Take the sum of the `lhs` and `rhs` size hints.
 #[inline]
 pub fn and(lhs: (usize, Option<usize>), rhs: (usize, Option<usize>)) -> (usize, Option<usize>) {
-    let lower = lhs.0 + rhs.0;
-    let upper = lhs.1.and_then(|lhs| rhs.1.map(|rhs| lhs + rhs));
+    let lower = lhs.0.saturating_add(rhs.0);
+    let upper = lhs
+        .1
+        .and_then(|lhs| rhs.1.map(|rhs| lhs.saturating_add(rhs)));
     (lower, upper)
 }
 
