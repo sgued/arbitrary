@@ -276,3 +276,56 @@ fn test_field_attributes() {
     // 17 is the 3rd byte used by arbitrary
     assert_eq!(parcel.price, 17);
 }
+
+#[test]
+fn wide_recursion_struct() {
+    #[derive(Debug, Arbitrary)]
+    struct Struct {
+        a: Box<Struct>,
+        b: Box<Struct>,
+        c: Box<Struct>,
+        d: Box<Struct>,
+        e: Box<Struct>,
+        f: Box<Struct>,
+        g: Box<Struct>,
+        h: Box<Struct>,
+        i: Box<Struct>,
+    }
+    assert_eq!(Struct::size_hint(0), (usize::MAX, None));
+}
+
+#[test]
+fn wide_recursion_enum() {
+    #[derive(Debug, Arbitrary)]
+    enum Enum {
+        None,
+        A(Box<Option<Enum>>),
+        B(Box<Option<Enum>>),
+        C(Box<Option<Enum>>),
+        D(Box<Option<Enum>>),
+        E(Box<Option<Enum>>),
+        F(Box<Option<Enum>>),
+        G(Box<Option<Enum>>),
+        H(Box<Option<Enum>>),
+        I(Box<Option<Enum>>),
+    }
+    assert_eq!(Enum::size_hint(0), (4, None));
+}
+
+#[test]
+fn wide_recursion_mixed() {
+    #[derive(Debug, Arbitrary)]
+    struct Struct {
+        a: Box<Option<Struct>>,
+        b: Box<Option<Struct>>,
+        c: Box<Option<Struct>>,
+        d: Box<Option<Struct>>,
+        e: Box<Option<Struct>>,
+        f: Box<Option<Struct>>,
+        g: Box<Option<Struct>>,
+        h: Box<Option<Struct>>,
+        i: Box<Option<Struct>>,
+    }
+
+    assert_eq!(Struct::size_hint(0), (4 * 9, None));
+}

@@ -279,17 +279,17 @@ fn gen_size_hint_method(input: &DeriveInput) -> Result<TokenStream> {
                 determine_field_constructor(f).map(|field_constructor| {
                     match field_constructor {
                         FieldConstructor::Default | FieldConstructor::Value(_) => {
-                            quote!((0, Some(0)))
+                            quote!(|_| (0, Some(0)))
                         }
                         FieldConstructor::Arbitrary => {
-                            quote! { <#ty as arbitrary::Arbitrary>::size_hint(depth) }
+                            quote! { <#ty as arbitrary::Arbitrary>::size_hint }
                         }
 
                         // Note that in this case it's hard to determine what size_hint must be, so size_of::<T>() is
                         // just an educated guess, although it's gonna be inaccurate for dynamically
                         // allocated types (Vec, HashMap, etc.).
                         FieldConstructor::With(_) => {
-                            quote! { (::core::mem::size_of::<#ty>(), None) }
+                            quote! { |_| (::core::mem::size_of::<#ty>(), None) }
                         }
                     }
                 })
@@ -297,9 +297,10 @@ fn gen_size_hint_method(input: &DeriveInput) -> Result<TokenStream> {
             .collect::<Result<Vec<TokenStream>>>()
             .map(|hints| {
                 quote! {
-                    arbitrary::size_hint::and_all(&[
-                        #( #hints ),*
-                    ])
+                    arbitrary::size_hint::and_all_lazy(
+                        &[ #( #hints ),*],
+                        depth
+                    )
                 }
             })
     };
@@ -328,7 +329,7 @@ fn gen_size_hint_method(input: &DeriveInput) -> Result<TokenStream> {
                         arbitrary::size_hint::and(
                             <u32 as arbitrary::Arbitrary>::size_hint(depth),
                             arbitrary::size_hint::recursion_guard(depth, |depth| {
-                                arbitrary::size_hint::or_all(&[ #( #variants ),* ])
+                                arbitrary::size_hint::or_all_lazy(&[ #( |depth| #variants ),* ], depth)
                             }),
                         )
                     }
