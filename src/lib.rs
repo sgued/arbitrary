@@ -451,10 +451,10 @@ impl_range!(
     |r: &Range<A>| (r.start.clone(), r.end.clone()),
     (A, A),
     bounded_range(|(a, b)| a..b),
-    |depth| crate::size_hint::and(
-        <A as Arbitrary>::size_hint(depth),
-        <A as Arbitrary>::size_hint(depth)
-    )
+    |depth| {
+        let cached_hint = <A as Arbitrary>::size_hint(depth);
+        crate::size_hint::and(cached_hint, cached_hint)
+    }
 );
 impl_range!(
     RangeFrom<A>,
@@ -468,10 +468,10 @@ impl_range!(
     |r: &RangeInclusive<A>| (r.start().clone(), r.end().clone()),
     (A, A),
     bounded_range(|(a, b)| a..=b),
-    |depth| crate::size_hint::and(
-        <A as Arbitrary>::size_hint(depth),
-        <A as Arbitrary>::size_hint(depth)
-    )
+    |depth| {
+        let cached_hint = <A as Arbitrary>::size_hint(depth);
+        crate::size_hint::and(cached_hint, cached_hint)
+    }
 );
 impl_range!(
     RangeTo<A>,
@@ -557,9 +557,9 @@ impl<'a, A: Arbitrary<'a>, B: Arbitrary<'a>> Arbitrary<'a> for std::result::Resu
     fn size_hint(depth: usize) -> (usize, Option<usize>) {
         crate::size_hint::and(
             <bool as Arbitrary>::size_hint(depth),
-            crate::size_hint::or(
-                <A as Arbitrary>::size_hint(depth),
-                <B as Arbitrary>::size_hint(depth),
+            crate::size_hint::or_all_lazy(
+                &[<A as Arbitrary>::size_hint, <B as Arbitrary>::size_hint],
+                depth,
             ),
         )
     }
@@ -584,10 +584,10 @@ macro_rules! arbitrary_tuple {
 
             #[inline]
             fn size_hint(depth: usize) -> (usize, Option<usize>) {
-                crate::size_hint::and_all(&[
-                    <$last as Arbitrary>::size_hint(depth),
-                    $( <$xs as Arbitrary>::size_hint(depth) ),*
-                ])
+                crate::size_hint::and_all_lazy(
+                    &[<$last as Arbitrary>::size_hint,$( <$xs as Arbitrary>::size_hint ),*],
+                    depth
+                )
             }
         }
     };
@@ -652,9 +652,8 @@ where
 
     #[inline]
     fn size_hint(d: usize) -> (usize, Option<usize>) {
-        crate::size_hint::and_all(&array::from_fn::<_, N, _>(|_| {
-            <T as Arbitrary>::size_hint(d)
-        }))
+        let cached_hint = <T as Arbitrary>::size_hint(d);
+        crate::size_hint::and_all(&array::from_fn::<_, N, _>(|_| cached_hint))
     }
 }
 
@@ -1290,6 +1289,21 @@ mod test {
             <(bool, u16, i32) as Arbitrary<'_>>::size_hint(0)
         );
         assert_eq!((1, None), <(u8, Vec<u8>) as Arbitrary>::size_hint(0));
+    }
+
+    #[test]
+    fn size_hints() {
+        fn size_hint<'a, A: Arbitrary<'a>>() -> (usize, Option<usize>) {
+            A::size_hint(0)
+        }
+        assert_eq!(size_hint::<Range<u8>>(), (2, Some(2)));
+        assert_eq!(size_hint::<RangeFrom<u8>>(), (1, Some(1)));
+        assert_eq!(size_hint::<RangeInclusive<u8>>(), (2, Some(2)));
+        assert_eq!(size_hint::<RangeTo<u8>>(), (1, Some(1)));
+        assert_eq!(size_hint::<RangeToInclusive<u8>>(), (1, Some(1)));
+        assert_eq!(size_hint::<Option<u32>>(), (1, Some(5)));
+        assert_eq!(size_hint::<Result<u32, u64>>(), (5, Some(9)));
+        assert_eq!(size_hint::<[u8; 1024]>(), (1024, Some(1024)));
     }
 }
 
